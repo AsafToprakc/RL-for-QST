@@ -13,7 +13,6 @@ from qutip import *
 
 # In[232]:
 
-
 def Rotate_X(angle):
     sigma_X = np.array([[0,1],[1,0]])
     return np.matrix(sp.linalg.expm(-1j*0.5*angle*sigma_X))
@@ -28,16 +27,18 @@ def Rotate_Z(angle):
 
 def measure(state,MC):
     
-    MeasurementVector = np.matrix(MC)
+    MC = np.matrix(MC)
     state = np.matrix(state)
     
-    MeasurementOperator = MeasurementVector*MeasurementVector.H
+    MeasurementOperator = MC*MC.H
     
     t = state.H*MeasurementOperator*state
     t = np.real(t[0,0])
     P = np.round(np.array([t, 1 - t]),5)
     
     return np.random.choice([1,-1], p = P)
+
+num_measurement = 10**3
 
 def state_reconstruction(computed_state,index):
     
@@ -63,9 +64,8 @@ def state_reconstruction(computed_state,index):
     c_down = np.sqrt(prob_down)
 
     reconstructed_state = c_up*measurement_configuration + c_down*Rotate_Y(np.pi)*measurement_configuration
-
+    
     return reconstructed_state
-
 
 # In[274]:
 
@@ -118,7 +118,7 @@ for i in range(num_episodes):
             MConfiguration_index = np.argmax(Qtable)
     
     #Reconstruction of the computed state with a chosen measurement configuration
-    reconstructed_state = state_reconstruction1(computed_state, MConfigurations[MConfiguration_index])
+    reconstructed_state = state_reconstruction(computed_state, MConfigurations[MConfiguration_index])
         
     #Reward for reconstructing the computed state with the chosen measurement configuration, fidelity for now
     reward = np.abs(np.vdot(reconstructed_state,computed_state)[0,0])
@@ -131,7 +131,7 @@ MConfigurations[np.argmax(Qtable)]
 
 num_measurement = 10**3
 
-reconstructed_state = state_reconstruction1(computed_state,MConfigurations[np.argmax(Qtable)])
+reconstructed_state = state_reconstruction(computed_state,MConfigurations[np.argmax(Qtable)])
 #Comparison
 print(computed_state)
 print(reconstructed_state)
