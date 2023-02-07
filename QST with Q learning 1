@@ -1,0 +1,158 @@
+import numpy as np
+import scipy as sp
+import matplotlib.pyplot as plt
+from random import *
+from qutip import *
+from qutip.measurement import *
+from sympy.physics.quantum import TensorProduct
+
+def state(theta,phi):
+    return np.round(np.cos(theta/2)*ket("u").full() + np.sin(theta/2)*np.exp(1j*phi)*ket("d").full(),10)
+
+def Rotate_X(angle):
+    sigma_X = np.array([[0,1],[1,0]])
+    return np.matrix(sp.linalg.expm(-1j*0.5*angle*sigma_X))
+
+def Rotate_Y(angle):
+    sigma_Y = np.array([[0,-1j],[1j,0]])
+    return np.matrix(sp.linalg.expm(-1j*0.5*angle*sigma_Y))
+
+def Rotate_Z(angle):
+    sigma_Z = np.array([[1,0],[0,-1]])
+    #return np.matrix(sp.linalg.expm(-1j*0.5*angle*sigma_Z))
+    return np.round(np.matrix([[1,0],[0,np.exp(-1j*angle)]]),15)
+
+def measure(state,measurement_indexes):
+    
+    MCs = np.array([X,Y,Z])
+    
+    transform = np.array(MCs[measurement_indexes[0]])
+    
+    for i in range(1,len(measurement_indexes)):
+        transform = TensorProduct(transform,MCs[measurement_indexes[i]])
+    
+    new_state = np.matrix(transform*state)
+    
+    prob = np.abs(np.diag(new_state*new_state.H))
+    
+    possible_states = np.arange(len(state))
+    
+    frequency = np.zeros(len(state))
+    
+    frequency[np.random.choice(possible_states, p = prob)] = 1
+    
+    coefficient = np.matrix(np.sqrt(frequency)).T
+    
+    back_transform = np.linalg.inv(transform)
+
+    measured_state = back_transform*coefficient
+
+    return measured_state
+
+X = np.matrix([[1,1],[1,-1]])/np.sqrt(2) #gives spin in the x-basis
+Y = np.matrix([[1,-1j],[1,1j]])/np.sqrt(2) #gives spin in the y-basis
+Z = np.identity(2) #gives spin in the z-basis (duh)
+
+x_up = Rotate_Y(np.pi/2)*ket("u").full()
+x_down = Rotate_Y(-np.pi/2)*ket("u").full()
+
+y_up = Rotate_X(-np.pi/2)*ket("u").full()
+y_down = Rotate_X(np.pi/2)*ket("u").full()
+
+z_up = np.matrix(ket("u").full())
+z_down = np.matrix(ket("d").full())
+
+sigma_x = np.matrix(sigmax())
+sigma_y = np.matrix(sigmay())
+sigma_z = np.matrix(sigmaz())
+
+sigmas = np.array([sigma_x,sigma_y,sigma_z])
+
+#Variables for RL algorithm
+eta = 0.5
+gamma = 0.5
+epsilon = 0.3
+T = 100
+
+#Angles of state on the Bloch sphere, these will determine the state that you want to do the tomography on
+theta = 0
+phi = 0
+
+measurement_sigmas = sigmas
+
+Qtable = np.zeros(3, dtype = "complex")
+
+tomography_state = np.matrix(TensorProduct(state(theta,phi)))
+
+tomography_density_matrix = tomography_state*tomography_state.H
+
+measurement_indexes = np.arange(3)
+
+measurement_count = np.zeros(3)
+
+expectation_values = np.zeros(3)
+
+new_expectation_values = np.zeros(3)
+
+spin_values = np.zeros(3)
+
+fidelity_list = np.zeros(T)
+
+measurement_x = np.array([])
+measurement_y = np.array([])
+measurement_z = np.array([])
+for i in range(T):
+    
+    if random() <= epsilon:
+        
+        measurement_index = np.random.choice(measurement_indexes)
+        
+    else:
+        
+        if all(v == 0 for v in Qtable):
+            
+            measurement_index = np.random.choice(measurement_indexes)
+            
+        else:
+            
+            measurement_index = measurement_indexes[np.argmax(Qtable)]
+    
+    measured_state = measure(tomography_state,[measurement_index])
+    
+    measured_density_matrix = measured_state*measured_state.H
+    
+    measurement_count[measurement_index] += 1
+    
+    spin_values[measurement_index] += np.round(np.real((measured_state.H*measurement_sigmas[measurement_index]*measured_state)[0,0]),2)
+    
+    expectation_values[measurement_index] = spin_values[measurement_index] / measurement_count[measurement_index]
+    
+    if all(v == 0 for v in expectation_values):
+        expectation_values = expectation_values
+    else:
+        expectation_values = expectation_values/np.sqrt(np.sum(expectation_values**2))
+    
+    measured_density_matrix = measured_state*measured_state.H
+    
+    reconstructed_density_matrix = 0.5*np.identity(2, dtype = "complex_")
+    
+    for j in range(3):
+        reconstructed_density_matrix += 0.5*expectation_values[j]*measurement_sigmas[j]
+    
+    fidelity = np.trace(reconstructed_density_matrix*tomography_density_matrix)
+    
+    fidelity_list[i] = np.abs(fidelity)
+    
+    reward = fidelity
+
+    Qtable[measurement_index] = Qtable[measurement_index] + eta*(reward + gamma*np.max(Qtable) - Qtable[measurement_index])
+    
+    #Qtable = np.abs(Qtable)
+    
+reconstructed_density_matrix = np.matrix(reconstructed_density_matrix)
+
+plt.figure()
+plt.plot(fidelity_list)
+plt.xlabel("Fidelity")
+plt.ylabel("Iteration")
+plt.show()
